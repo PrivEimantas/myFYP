@@ -34,6 +34,7 @@ with contextlib.suppress(ImportError):
 with contextlib.suppress(ImportError):
     from p2pfl.examples.mnist.model.mlp_pytorch import model_build_fn as model_build_fn_pytorch
 
+
 set_standalone_settings()
 
 import random
@@ -238,22 +239,7 @@ def __train_with_additive_noise(s, n, r, model_build_fn, disable_ray: bool = Fal
 HELPER FUNCTIONS
 """
 
-def reset_environment():
-    import ray
-    # Shutdown and restart Ray to clear worker state.
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(ignore_reinit_error=True)
-    
-    # Clear logger caches if your logger provides such a method.
-    if hasattr(logger, "clear_global_logs"):
-        logger.clear_global_logs()
-    if hasattr(logger, "clear_local_logs"):
-        logger.clear_local_logs()
-    
-    # Optionally, if you have additional settings to reset:
-    if hasattr(Settings, "reset"):
-        Settings.reset()
+
 
 def __get_results(exp_name):
     # Get global metrics
@@ -299,11 +285,11 @@ def test_global_training_reproducibility():
 
     model_build_fn=model_build_fn_pytorch
 
-    # exp_name1 = __train_with_seed(666, n, r, model_build_fn, False)
-    # exp_name2 = __train_with_seed(666, n, r, model_build_fn, False)
+    exp_name1 = __train_with_seed(666, n, r, model_build_fn, False)
+    exp_name2 = __train_with_seed(666, n, r, model_build_fn, False)
     # exp_name1 = __train_with_sign_flip(666, n, r, model_build_fn, False, attack_node_idx=0)
-    exp_name1 = __train_with_additive_noise(666, n, r, model_build_fn, False, attack_node_idx=0, noise_std=0.1)
-    exp_name2 = exp_name1
+    # exp_name1 = __train_with_additive_noise(666, n, r, model_build_fn, False, attack_node_idx=0, noise_std=0.1)
+    # exp_name2 = exp_name1
     # exp_name2 = __train_with_seed(666, n, r, model_build_fn, False)
     
     # exp_name2 =  __train_with_sign_flip(666, n, r, model_build_fn, False, attack_node_idx=0)
@@ -334,7 +320,7 @@ def test_global_training_reproducibility():
     node_key1 = list(global_logs1.keys())[0] if global_logs1 else None
     node_key2 = list(global_logs2.keys())[0] if global_logs2 else None
 
-    keys = ["test_loss", "test_metric"]
+    keys = ["test_loss", "test_metric","test_f1", "test_precision", "test_recall"]
     print("Metric         | Normal Experiment                        | Attack Experiment")
     print("-" * 70)
     
@@ -347,4 +333,5 @@ def test_global_training_reproducibility():
 
 if __name__ == "__main__":
     # Define the inputs (as in pytest parameterize)
+    
     test_global_training_reproducibility()
