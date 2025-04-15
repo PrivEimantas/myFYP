@@ -223,9 +223,9 @@ if __name__ == "__main__":
         logger.connect_web("http://localhost:3000/api/v1", args.token)
 
     # Seed
-    if args.seed is not None:
-        Settings.general.SEED = args.seed
-
+    # if args.seed is not None:
+    Settings.general.SEED = 42
+    print(args.seed)
     # Launch experiment
     try:
         mnist(

@@ -22,7 +22,7 @@ from typing import Dict, Optional
 
 import lightning as L
 import torch
-from torchmetrics import Accuracy, Metric
+from torchmetrics import Accuracy, Metric, Precision, Recall,F1Score
 
 from p2pfl.learning.frameworks.pytorch.lightning_model import LightningModel
 from p2pfl.settings import Settings
