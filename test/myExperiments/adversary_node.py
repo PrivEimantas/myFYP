@@ -1,27 +1,37 @@
-import random
+# malicious_node.py
+from copy import deepcopy
 from p2pfl.node import Node
 
-def poison_batch(batch, poison_ratio=0.1, trigger_src=7, target=5):
+class ModelReplacementNode(Node):
     """
-    Modify a fraction of samples in the batch: for each sample whose label is trigger_src,
-    with probability `poison_ratio`, change the label to target. Optionally, modify the image to embed a trigger.
+    A P2PFL node that (i) trains on poisoned data and
+    (ii) scales its update so the global model is replaced.
     """
-    images = batch["image"]
-    labels = batch["label"].clone()  # Clone to avoid in-place modifications.
-    for i in range(len(labels)):
-        if labels[i].item() == trigger_src and random.random() < poison_ratio:
-            labels[i] = target
-    return {"image": images, "label": labels}
 
-class AdversaryNode(Node):
-    """
-    An adversary node that injects poisoned data during training.
-    
-    This node overrides the training_step to poison a fraction of the incoming batches.
-    """
-    def training_step(self, batch, batch_id):
-        # Inject poisoning into the data during training.
-        poison_ratio = 0.1  # Adjust the ratio as required.
-        poisoned_batch = poison_batch(batch, poison_ratio=poison_ratio, trigger_src=7, target=5)
-        # Call the parent Node's training_step with the poisoned batch.
-        return super().training_step(poisoned_batch, batch_id)
+    def _scale_update(self, global_w, local_w, scale):
+        """
+        Return weights equal to  global + scale * (local - global).
+        """
+        return {k: global_w[k] + scale * (local_w[k] - global_w[k])
+                for k in global_w.keys()}
+
+    # ---- OVERRIDE ONLY ONE METHOD ----
+    def __start_learning(self, rounds, epochs, trainset_size, experiment_name):
+        """
+        Same as parent but we intercept just before we push the weights.
+        """
+        # 1.  Train locally on poisoned data  (identical to parent)
+        super()._Node__start_learning(rounds, epochs, trainset_size, experiment_name)   # noqa: protected-access
+
+        # 2.  Grab fresh global weights and our new local weights
+        global_state = deepcopy(self.aggregator.get_global_model())   #     Wᴳ
+        local_state  = deepcopy(self.learner.get_model().state_dict())  #  Wᴸ
+
+        # 3.  Compute scale  K  (≥  #participants in this round)
+        K = max(1, len(self.get_neighbors(only_direct=True)) + 1)
+
+        # 4.  Replace learner’s weights by the *scaled* ones
+        scaled_state = self._scale_update(global_state, local_state, K)
+        self.learner.set_model_weights(scaled_state)   # prepare to broadcast
+
+        # 5.  Let P2PFL continue: it will broadcast the weights as usual

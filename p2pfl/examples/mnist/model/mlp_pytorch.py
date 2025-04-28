@@ -53,8 +53,14 @@ class MLP(L.LightningModule):
         self.lr_rate = lr_rate
         if out_channels == 1:
             self.metric = metric(task="binary")
+            self.f1score = F1Score(task="binary")
+            self.precision = Precision(task="binary")
+            self.recall = Recall(task="binary")
         else:
             self.metric = metric(task="multiclass", num_classes=out_channels)
+            self.f1score = F1Score(task="multiclass", num_classes=out_channels, average="macro")
+            self.precision = Precision(task="multiclass", num_classes=out_channels, average="macro")
+            self.recall = Recall(task="multiclass", num_classes=out_channels, average="macro")
 
         self.layers = torch.nn.ModuleList()
 
@@ -101,7 +107,7 @@ class MLP(L.LightningModule):
         x = batch["image"].float()
         y = batch["label"]
         loss = torch.nn.functional.cross_entropy(self(x), y)
-        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_loss", loss, prog_bar=False)
         return loss
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_id: int) -> torch.Tensor:
@@ -116,9 +122,27 @@ class MLP(L.LightningModule):
         loss = torch.nn.functional.cross_entropy(self(x), y)
         out = torch.argmax(logits, dim=1)
         metric = self.metric(out, y)
-        self.log("test_loss", loss, prog_bar=True)
-        self.log("test_metric", metric, prog_bar=True)
+        test_f1 = self.f1score(out, y)
+        test_prec = self.precision(out, y)
+        test_rec = self.recall(out, y)
+        self.log("test_f1", test_f1, prog_bar=False)
+        self.log("test_precision", test_prec, prog_bar=False)
+        self.log("test_loss", loss, prog_bar=False)
+        self.log("test_recall", test_rec, prog_bar=False)
+        self.log("test_metric", metric, prog_bar=False)
         return loss
+    
+    def on_test_epoch_end(self):
+        set_seed(Settings.general.SEED, "pytorch")
+        # Compute and log accumulated metric values once at the end of an epoch
+        test_acc = self.metric.compute()
+        test_f1 = self.f1score.compute()
+        test_prec = self.precision.compute()
+        test_rec = self.recall.compute()
+        self.log("test_accuracy", test_acc, prog_bar=False)
+        self.log("test_f1", test_f1, prog_bar=False)
+        self.log("test_precision", test_prec, prog_bar=False)
+        self.log("test_recall", test_rec, prog_bar=False)
 
 
 # Export P2PFL model

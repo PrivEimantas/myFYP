@@ -95,6 +95,7 @@ class LightningLearner(Learner):
                     logger=self.logger,  # type: ignore
                     enable_checkpointing=False,
                     enable_model_summary=False,
+                    enable_progress_bar=False,
                     callbacks=self.callbacks.copy(),  # type: ignore
                 )
                 pt_model, pt_data = self.__get_pt_model_data()

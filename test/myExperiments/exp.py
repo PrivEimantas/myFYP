@@ -36,7 +36,15 @@ with contextlib.suppress(ImportError):
     from p2pfl.examples.mnist.model.mlp_pytorch import model_build_fn as model_build_fn_pytorch
 
 
+
+
 set_standalone_settings()
+
+import os
+# Suppress TensorFlow INFO and WARNING logs (only errors will be printed)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 
 import random
 import numpy as np
@@ -235,10 +243,21 @@ def __train_with_additive_noise(s, n, r, model_build_fn, disable_ray: bool = Fal
     return exp_name
 
 
-# from p2pfl.node import Node
-from test.myExperiments.adversary_node import AdversaryNode  # Make sure this file exists and defines AdversaryNode
+def count_labels_in_partition(partition, split_name):
+    """
+    Count the labels in a given partition's split.
+    This function assumes the partition stores its data in a Hugging Face DatasetDict 
+    accessible via partition._data.
+    """
+    ds = partition._data.get(split_name)
+    from collections import Counter
+    labels = [item["label"] for item in ds]
+    return Counter(labels)
 
-def __train_with_adversary(s, n, r, model_build_fn, disable_ray: bool = False, adversary_index: int = 0):
+# from p2pfl.node import Node
+from test.myExperiments.adversary_node import ModelReplacementNode  # Make sure this file exists and defines AdversaryNode
+
+def __train_with_adversary(s, n, r, model_build_fn, disable_ray: bool = False, adversary_index: int = 1):
     """
     Train the network where one node acts as an adversary by injecting poisoning during training.
     The adversary node (at index adversary_index) uses the AdversaryNode class.
@@ -261,13 +280,25 @@ def __train_with_adversary(s, n, r, model_build_fn, disable_ray: bool = False, a
     Settings.general.SEED = s
     set_all_seeds(s)
     data = P2PFLDataset.from_huggingface("p2pfl/MNIST")
+
+    # from test.myExperiments.poisonedDataset import MnistBackdoor
+    # poisonedData = MnistBackdoor(data, poison_fraction=1.0)
+
     partitions = data.generate_partitions(n * 50, RandomIIDPartitionStrategy)
+    from test.myExperiments.poisonedDataset import poison_partition
+    poisonedPartitions = [poison_partition(part, poison_fraction=1.0) for part in partitions]
+    # poisonedPartitions = poisonedData.generate_partitions(n * 50, RandomIIDPartitionStrategy)
+    # For example, after generating the partitions:
+    original_counts = count_labels_in_partition(partitions[0], partitions[0]._train_split_name)
+    poisoned_counts = count_labels_in_partition(poisonedPartitions[0], poisonedPartitions[0]._train_split_name)
+    print("Original partition label counts:", original_counts)
+    print("Poisoned partition label counts:", poisoned_counts)
 
     # Create and start nodes, using AdversaryNode for the designated adversary_index.
     nodes = []
     for i in range(n):
         if i == adversary_index:
-            node = AdversaryNode(model_build_fn(), partitions[i])
+            node = Node(model_build_fn(), poisonedPartitions[i])
         else:
             node = Node(model_build_fn(), partitions[i])
         node.start()
@@ -341,9 +372,13 @@ def test_global_training_reproducibility():
 
     model_build_fn=model_build_fn_pytorch
 
-    exp_name1 = __train_with_seed(666, n, r, model_build_fn, False)
-    exp_name2 = __train_with_seed(666, n, r, model_build_fn, False)
+    exp_name1 = __train_with_adversary(666, n, r, model_build_fn, False, adversary_index=1)
+    # exp_name1 = __train_with_sign_flip(666, n, r, model_build_fn, False, attack_node_idx=1)
+    # exp_name1 = __train_with_seed(666, n, r, model_build_fn, False)
+    # exp_name2 = __train_with_seed(666, n, r, model_build_fn, False)
+    exp_name2 = exp_name1
 
+    
     # exp_name1 = __train_with_sign_flip(666, n, r, model_build_fn, False, attack_node_idx=0)
     # exp_name1 = __train_with_additive_noise(666, n, r, model_build_fn, False, attack_node_idx=0, noise_std=0.1)
     
